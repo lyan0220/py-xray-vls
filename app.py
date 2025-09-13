@@ -180,7 +180,6 @@ class VLESSXrayProxy:
     """VLESS Xray 双模式代理服务"""
     
     def __init__(self, domain, user_uuid):
-        # 修复：将参数名从 uuid 改为 user_uuid，避免与 uuid 模块冲突
         self.uuid = user_uuid if user_uuid else str(uuid.uuid4())
         self.path = "/" + str(uuid.uuid4()).split('-')[0]
         self.domain = domain
@@ -339,3 +338,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
