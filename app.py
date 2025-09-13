@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-VLESS 代理服务脚本 - Xray内核 极致精简版
+VLESS 代理服务脚本 - Xray内核 最终版
 专为 64MB Pterodactyl 容器优化
 自动检测容器环境并生成直连与CDN双模式链接
 """
@@ -28,12 +28,8 @@ import zipfile
 # 你的域名，用于Cloudflare CDN代理
 DOMAIN = "cloudflare.182682.xyz"
 
-# 如果你想使用一个固定的UUID，可以在这里设置
-# 如果想每次随机生成，请保留默认值
-UUID_STR = str(uuid.uuid4())
-
-# WebSocket 路径
-PATH = "/" + str(uuid.uuid4()).split('-')[0]
+# UUID变量，留空自动生成或写入固定值
+UUID = ""
 # ======================================================================
 
 class PterodactylDetector:
@@ -130,7 +126,7 @@ class MinimalXray:
             return False
 
     @staticmethod
-    def create_vless_config(uuid_str, path, domain, direct_port, cdn_port):
+    def create_vless_config(uuid, path, domain, direct_port, cdn_port):
         config = {
             "log": {"loglevel": "error"},
             "inbounds": [
@@ -140,7 +136,7 @@ class MinimalXray:
                     "listen": "0.0.0.0",
                     "protocol": "vless",
                     "settings": {
-                        "clients": [{"id": uuid_str, "level": 0}],
+                        "clients": [{"id": uuid, "level": 0}],
                         "decryption": "none"
                     },
                     "streamSettings": {
@@ -158,7 +154,7 @@ class MinimalXray:
                     "listen": "0.0.0.0",
                     "protocol": "vless",
                     "settings": {
-                        "clients": [{"id": uuid_str, "level": 0}],
+                        "clients": [{"id": uuid, "level": 0}],
                         "decryption": "none"
                     },
                     "streamSettings": {
@@ -183,11 +179,12 @@ class MinimalXray:
 class VLESSXrayProxy:
     """VLESS Xray 双模式代理服务"""
     
-    def __init__(self, domain, uuid_str, path):
-        self.process = None
+    def __init__(self, domain, user_uuid):
+        # 修复：将参数名从 uuid 改为 user_uuid，避免与 uuid 模块冲突
+        self.uuid = user_uuid if user_uuid else str(uuid.uuid4())
+        self.path = "/" + str(uuid.uuid4()).split('-')[0]
         self.domain = domain
-        self.uuid_str = uuid_str
-        self.path = path
+        self.process = None
         self.setup_signals()
     
     def setup_signals(self):
@@ -255,7 +252,7 @@ VLESS Xray 代理服务（双模式）
         
         cdn_port = 443
         
-        config = MinimalXray.create_vless_config(self.uuid_str, self.path, self.domain, direct_port, cdn_port)
+        config = MinimalXray.create_vless_config(self.uuid, self.path, self.domain, direct_port, cdn_port)
         
         with open('config.json', 'w') as f:
             json.dump(config, f, indent=2)
@@ -289,7 +286,7 @@ VLESS Xray 代理服务（双模式）
         print("=" * 60)
         
         # 直连链接
-        direct_link = (f"vless://{self.uuid_str}@{ip}:{direct_port}?"
+        direct_link = (f"vless://{self.uuid}@{ip}:{direct_port}?"
                        f"encryption=none&security=none&type=ws"
                        f"&host={quote(self.domain)}&path={quote(self.path)}"
                        f"#VLESS-Xray-Direct")
@@ -298,7 +295,7 @@ VLESS Xray 代理服务（双模式）
         print(direct_link)
         
         # CDN优化链接
-        cdn_link = (f"vless://{self.uuid_str}@{self.domain}:{cdn_port}?"
+        cdn_link = (f"vless://{self.uuid}@{self.domain}:{cdn_port}?"
                     f"encryption=none&security=tls&type=ws"
                     f"&host={quote(self.domain)}&path={quote(self.path)}"
                     f"&sni={quote(self.domain)}"
@@ -324,7 +321,7 @@ VLESS Xray 代理服务（双模式）
 def main():
     gc.enable()
     gc.set_threshold(200, 4, 4)
-    proxy = VLESSXrayProxy(DOMAIN, UUID_STR, PATH)
+    proxy = VLESSXrayProxy(DOMAIN, UUID)
     if proxy.start():
         try:
             while True:
