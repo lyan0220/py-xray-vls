@@ -30,12 +30,16 @@ DOMAIN = "cloudflare.182682.xyz"
 
 # UUID变量，留空自动生成或写入固定值
 UUID = ""
+
+# 如果为空，脚本将自动使用 Pterodactyl 分配的端口。
+PORT = ""
 # ======================================================================
 
 class PterodactylDetector:
     """Pterodactyl 环境检测"""
     @staticmethod
     def detect_environment():
+        """检测 Pterodactyl 环境并返回相关环境变量"""
         indicators = {
             'SERVER_MEMORY': 'Pterodactyl 内存限制',
             'SERVER_IP': 'Pterodactyl 服务器IP',
@@ -50,6 +54,7 @@ class PterodactylDetector:
     
     @staticmethod
     def get_server_ip():
+        """获取服务器公网IP"""
         server_ip = os.environ.get('SERVER_IP')
         if server_ip and server_ip != '0.0.0.0':
             return server_ip
@@ -230,11 +235,13 @@ VLESS Xray 代理服务（双模式）
             print("❌ 未检测到 Pterodactyl 环境，脚本终止。")
             return False
             
-        direct_port = int(os.environ.get('SERVER_PORT', 0))
+        direct_port = int(PORT) if PORT else int(os.environ.get('SERVER_PORT', 0))
+        cdn_port = 443
+
         if direct_port == 0:
             print("❌ 未检测到 Pterodactyl 分配的端口，脚本终止。")
             return False
-        
+            
         print(f"✓ 检测到 Pterodactyl 环境")
         print(f"内存限制: {env_info.get('SERVER_MEMORY', 'Unknown')}")
         server_ip = PterodactylDetector.get_server_ip()
@@ -248,8 +255,6 @@ VLESS Xray 代理服务（双模式）
         if not xray_path.exists():
             print("❌ 错误：Xray 可执行文件未成功解压或不存在。")
             return False
-        
-        cdn_port = 443
         
         config = MinimalXray.create_vless_config(self.uuid, self.path, self.domain, direct_port, cdn_port)
         
@@ -338,4 +343,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
