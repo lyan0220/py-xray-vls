@@ -254,7 +254,7 @@ VLESS Xray 代理服务（CDN模式）
 
         print("\n启动 Xray...")
         env = os.environ.copy()
-        env["GOMEMLIMIT"] = "30MiB"
+        env["GOMEMLIMIT"] = "20MiB"
         env["GOGC"] = "10"
 
         self.process = subprocess.Popen(
@@ -324,3 +324,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
