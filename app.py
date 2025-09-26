@@ -19,6 +19,7 @@ from urllib.parse import quote
 import urllib.request
 import platform
 import zipfile
+import requests
 
 # ======================================================================
 # 核心配置区
@@ -31,6 +32,9 @@ UUID = ""
 
 # 留空将自动使用 Pterodactyl 分配的端口
 PORT = ""
+
+# 节点名称，将显示在客户端
+NODE_NAME = "Panel"
 # ======================================================================
 
 
@@ -141,7 +145,6 @@ class MinimalXray:
                     },
                     "streamSettings": {
                         "network": "ws",
-                        # 保持原始脚本的 "security": "none"，这是关键
                         "security": "none",
                         "wsSettings": {"path": path, "headers": {"Host": domain}},
                     },
@@ -162,11 +165,12 @@ class MinimalXray:
 class VLESSXrayProxy:
     """VLESS Xray 单CDN代理服务"""
 
-    def __init__(self, domain, user_uuid, user_port):
+    def __init__(self, domain, user_uuid, user_port, node_name):
         self.uuid = user_uuid if user_uuid else str(uuid.uuid4())
         self.path = "/" + str(uuid.uuid4()).split("-")[0]
         self.domain = domain
         self.user_port = user_port
+        self.node_name = node_name
         self.process = None
         self.setup_signals()
 
@@ -193,6 +197,20 @@ class VLESSXrayProxy:
         if os.path.exists("xray"):
             shutil.rmtree("xray", ignore_errors=True)
         gc.collect()
+
+    def get_isp_info(self):
+        """获取国家和ISP信息"""
+        try:
+            print("正在获取ISP信息...")
+            response = requests.get("https://speed.cloudflare.com/meta", timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            isp = f"{data['country']}-{data['asOrganization']}".replace(" ", "_")
+            print(f"✓ 获取ISP成功: {isp}")
+            return isp
+        except requests.exceptions.RequestException as e:
+            print(f"❌ 获取ISP失败: {e}")
+            return "Unknown"
 
     def start(self):
         print("""
@@ -231,12 +249,13 @@ VLESS Xray 代理服务（CDN模式）
         with open("config.json", "w") as f:
             json.dump(config, f, indent=2)
 
-        self.display_info(port)
+        isp_info = self.get_isp_info()
+        self.display_info(port, isp_info)
 
         print("\n启动 Xray...")
         env = os.environ.copy()
         env["GOMEMLIMIT"] = "30MiB"
-        env["GOGC"] = "30"
+        env["GOGC"] = "10"
 
         self.process = subprocess.Popen(
             [str(xray_path), "run", "-config", "config.json"],
@@ -253,7 +272,9 @@ VLESS Xray 代理服务（CDN模式）
         print("✓ Xray 运行中")
         return True
 
-    def display_info(self, port):
+    def display_info(self, port, isp_info):
+        final_node_name = f"{self.node_name}-{isp_info}"
+        
         print("\n" + "=" * 60)
         print("VLESS Xray CDN 节点已启动")
         print("=" * 60)
@@ -263,7 +284,7 @@ VLESS Xray 代理服务（CDN模式）
             f"encryption=none&security=tls&type=ws"
             f"&host={quote(self.domain)}&path={quote(self.path)}"
             f"&sni={quote(self.domain)}"
-            f"#VLESS-Xray-CDN"
+            f"#{quote(final_node_name)}"
         )
 
         print(f"\n🔗 **CDN 节点链接**:")
@@ -276,15 +297,15 @@ VLESS Xray 代理服务（CDN模式）
         print(f"\n链接已保存到: vless_xray_links.txt")
         print(f"\n⚠ **提示**:")
         print(f"1. 节点只支持 CDN 模式，请确保域名({self.domain}) 已在 Cloudflare 解析并开启代理。")
-        print(f"2. 客户端连接时必须启用 TLS，端口固定写 **443**。")
-        print(f"3. 容器内部监听端口为 **{port}**，Cloudflare 会将 443 端口流量转发至此。")
+        print(f"2. 你的容器需要通过 Cloudflare 的 **Origin Rules** 将流量路由到这个端口。")
+        print(f"3. Cloudflare 的 SSL/TLS 加密模式必须为 **灵活 (Flexible)**。")
         print("\n✅ 服务运行中 (Ctrl+C 停止)")
 
 
 def main():
     gc.enable()
     gc.set_threshold(200, 4, 4)
-    proxy = VLESSXrayProxy(DOMAIN, UUID, PORT)
+    proxy = VLESSXrayProxy(DOMAIN, UUID, PORT, NODE_NAME)
     if proxy.start():
         try:
             while True:
