@@ -24,23 +24,14 @@ import requests
 # ======================================================================
 # 核心配置区
 # ======================================================================
-# 你的域名（Cloudflare 代理开启橙色云朵）
-DOMAIN = "cloudflare.182682.xyz"
-
-# UUID变量，留空自动生成或写入固定值
-UUID = ""
-
-# 留空将自动使用 Pterodactyl 分配的端口
-PORT = ""
-
-# 节点名称，将显示在客户端
-NODE_NAME = "Panel"
+DOMAIN = "cloudflare.182682.xyz"  # 你的域名（Cloudflare 代理开启橙色云朵）
+UUID = ""  # UUID变量，留空自动生成或写入固定值
+PORT = ""  # 建议留空将自动使用分配的端口
+NODE_NAME = "Panel"  # 节点名称，将显示在客户端
 # ======================================================================
 
 
 class PterodactylDetector:
-    """Pterodactyl 环境检测"""
-
     @staticmethod
     def detect_environment():
         indicators = {
@@ -48,11 +39,11 @@ class PterodactylDetector:
             "SERVER_IP": "Pterodactyl 服务器IP",
             "SERVER_PORT": "Pterodactyl 主端口",
         }
-        detected = {key: os.environ.get(key) for key in indicators if os.environ.get(key)}
+        detected = {k: os.environ.get(k) for k in indicators if os.environ.get(k)}
         if detected:
-            for key, desc in indicators.items():
-                if key in detected:
-                    print(f"✓ 检测到 {desc}: {detected[key]}")
+            for k, desc in indicators.items():
+                if k in detected:
+                    print(f"✓ 检测到 {desc}: {detected[k]}")
         return len(detected) > 0, detected
 
     @staticmethod
@@ -69,14 +60,13 @@ class PterodactylDetector:
 
 
 class MinimalXray:
-    """最小化 Xray 服务"""
-
     @staticmethod
     def download_xray():
-        """下载 Xray"""
         arch_map = {"x86_64": "amd64", "x64": "amd64", "aarch64": "arm64", "arm64": "arm64"}
         arch = arch_map.get(platform.machine().lower(), "amd64")
-        filename = "Xray-linux-64.zip" if arch == "amd64" else "Xray-linux-arm64-v8a.zip"
+        filename = (
+            "Xray-linux-64.zip" if arch == "amd64" else "Xray-linux-arm64-v8a.zip"
+        )
         url = f"https://github.com/XTLS/Xray-core/releases/latest/download/{filename}"
 
         print(f"下载 Xray ({arch})...")
@@ -93,7 +83,6 @@ class MinimalXray:
 
     @staticmethod
     def extract_xray():
-        """解压 Xray"""
         try:
             zip_path = Path("xray.zip")
             if not zip_path.exists():
@@ -131,7 +120,6 @@ class MinimalXray:
 
     @staticmethod
     def create_vless_config(uuid, path, domain, port):
-        """生成单CDN节点配置"""
         config = {
             "log": {"loglevel": "error"},
             "inbounds": [
@@ -163,8 +151,6 @@ class MinimalXray:
 
 
 class VLESSXrayProxy:
-    """VLESS Xray 单CDN代理服务"""
-
     def __init__(self, domain, user_uuid, user_port, node_name):
         self.uuid = user_uuid if user_uuid else str(uuid.uuid4())
         self.path = "/" + str(uuid.uuid4()).split("-")[0]
@@ -199,7 +185,6 @@ class VLESSXrayProxy:
         gc.collect()
 
     def get_isp_info(self):
-        """获取国家和ISP信息"""
         try:
             print("正在获取ISP信息...")
             response = requests.get("https://speed.cloudflare.com/meta", timeout=5)
@@ -213,12 +198,14 @@ class VLESSXrayProxy:
             return "Unknown"
 
     def start(self):
-        print("""
+        print(
+            """
 =====================================
 VLESS Xray 代理服务（CDN模式）
 专为 64MB Pterodactyl 容器优化
 =====================================
-""")
+"""
+        )
         is_pterodactyl, env_info = PterodactylDetector.detect_environment()
         if not is_pterodactyl:
             print("❌ 未检测到 Pterodactyl 环境，脚本终止。")
@@ -274,7 +261,7 @@ VLESS Xray 代理服务（CDN模式）
 
     def display_info(self, port, isp_info):
         final_node_name = f"{self.node_name}-{isp_info}"
-        
+
         print("\n" + "=" * 60)
         print("VLESS Xray CDN 节点已启动")
         print("=" * 60)
@@ -297,10 +284,9 @@ VLESS Xray 代理服务（CDN模式）
         print(f"\n链接已保存到: vless_xray_links.txt")
         print(f"\n⚠ **提示**:")
         print(f"1. 节点只支持 CDN 模式，请确保域名({self.domain}) 已在 Cloudflare 解析并开启代理。")
-        print(f"2. 你的容器需要通过 Cloudflare 的 **Origin Rules** 将流量路由到这个端口。")
+        print(f"2. 你需要通过 Cloudflare 的 **Origin Rules** 将流量路由到代理监听端口: {port}")
         print(f"3. Cloudflare 的 SSL/TLS 加密模式必须为 **灵活 (Flexible)**。")
         print("\n✅ 服务运行中 (Ctrl+C 停止)")
-
 
 def main():
     gc.enable()
@@ -308,14 +294,23 @@ def main():
     proxy = VLESSXrayProxy(DOMAIN, UUID, PORT, NODE_NAME)
     if proxy.start():
         try:
+            restart_limit = 5
+            restart_count = 0
             while True:
                 time.sleep(30)
                 gc.collect(2)
                 if proxy.process and proxy.process.poll() is not None:
-                    print("\n⚠ Xray 进程异常退出")
-                    break
+                    print("\n⚠ Xray 进程异常退出，尝试重启")
+                    restart_count += 1
+                    if restart_count > restart_limit:
+                        print("❌ 达到最大重启次数，停止重启")
+                        break
+                    proxy.cleanup()
+                    if not proxy.start():
+                        print("❌ 重启失败，退出")
+                        break
         except KeyboardInterrupt:
-            pass
+            print("\n检测到 Ctrl+C，正常退出")
     else:
         print("\n❌ 启动失败")
     proxy.cleanup()
@@ -324,5 +319,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
