@@ -7,6 +7,10 @@ pip install -r requirements.txt
 #### Startup Command 2 (Optional)
 python app.py
 
+Command 1  | Command 2|
+--------- | --------|
+```pip install -r requirements.txt  | ```python app.py |
+
 ## 运行方式2
 ### 上传requirements.txt、app.py和start.sh全部三个文件
 #### Startup Command 1
